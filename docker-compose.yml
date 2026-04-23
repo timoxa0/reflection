@@ -4,11 +4,12 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - mirrors:/mirrors
-      - ./keys:/keys:ro    # SSH-ключи (опционально)
+      - ./keys:/keys:roZ    # SSH-ключи (опционально)
     ports:
       - "8080:8080"        # webhook (если включён в config.yaml)
     environment:
-      - WEBHOOK_SECRET     # берётся из окружения хоста или .env файла
+      - WEBHOOK_SECRET
+      - NL_TOKEN
     restart: unless-stopped
 
 volumes:
