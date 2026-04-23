@@ -5,14 +5,22 @@ settings:
   # Уровень логирования: DEBUG, INFO, WARNING, ERROR
   log_level: INFO
 
-  # Интервал обновления в режиме демона (секунды)
+  # Глобальный интервал синхронизации (секунды). Можно переопределить для каждого репо.
   schedule_interval: 3600
 
   # Таймаут одной git-операции (секунды)
   timeout: 300
 
-  # Параллельных потоков (по числу репозиториев)
+  # Параллельных потоков синхронизации
   workers: 4
+
+  webhook:
+    enabled: true
+    host: 0.0.0.0
+    port: 8080
+    # Bearer-токен для аутентификации:
+    #   Authorization: Bearer <secret>
+    secret: "change-me-please"
 
 # ────────────────────────────────────────────────────────────────────────────
 # Репозитории
@@ -24,11 +32,12 @@ settings:
 #
 # refs/pull/* (GitHub PR-рефы) не пушатся намеренно — большинство git-хостингов
 # (Gitverse, Gitea, GitLab) отклоняют их хуком.
-# Чтобы добавить свои refspecs — используйте push_refs в нужном destination.
 # ────────────────────────────────────────────────────────────────────────────
 repositories:
 
   - name: my-project
+    # Необязательно: переопределить интервал для этого репо (секунды)
+    # schedule_interval: 1800
     source:
       url: https://github.com/original/my-project.git
     destinations:
@@ -44,6 +53,7 @@ repositories:
         #   - "+refs/notes/*:refs/notes/*"
 
   - name: private-service
+    schedule_interval: 900  # каждые 15 минут
     source:
       url: git@github.com:company/private-service.git
       ssh_key: /keys/github_ed25519
