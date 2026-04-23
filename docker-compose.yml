@@ -1,0 +1,25 @@
+services:
+
+  # ── Однократный запуск (для внешнего cron) ──────────────────────────────
+  mirror-once:
+    build: .
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - mirrors:/mirrors
+      - ./keys:/keys:ro          # SSH-ключи (опционально)
+    # Запускается и завершается; внешний cron вызывает `docker compose run mirror-once`
+    profiles: ["once"]
+
+  # ── Daemon-режим (встроенный планировщик) ───────────────────────────────
+  mirror-daemon:
+    build: .
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - mirrors:/mirrors
+      - ./keys:/keys:ro
+    command: ["--config", "/app/config.yaml", "--daemon"]
+    restart: unless-stopped
+    profiles: ["daemon"]
+
+volumes:
+  mirrors:
