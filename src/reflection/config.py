@@ -15,11 +15,9 @@ DEFAULT_PUSH_REFS = (
 
 @dataclass
 class Remote:
-    """Общая модель для source и destination."""
     url: str
     ssh_key: Optional[str] = None
     ssl_verify: bool = True
-    # Дополнительные refspecs поверх дефолтных (heads + tags)
     push_refs: list[str] = field(default_factory=list)
 
 
@@ -28,6 +26,7 @@ class Repository:
     name: str
     source: Remote
     destinations: list[Remote] = field(default_factory=list)
+    schedule_interval: Optional[int] = None  # overrides settings.schedule_interval
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -37,12 +36,25 @@ class Repository:
 
 
 @dataclass
+class WebhookConfig:
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8080
+    secret: str = ""
+
+    def __post_init__(self) -> None:
+        if self.enabled and not self.secret:
+            raise ValueError("webhook.secret must be set when webhook is enabled")
+
+
+@dataclass
 class Settings:
     mirrors_dir: str = "/mirrors"
     log_level: str = "INFO"
     schedule_interval: int = 3600
     timeout: int = 300
     workers: int = 4
+    webhook: WebhookConfig = field(default_factory=WebhookConfig)
 
     def __post_init__(self) -> None:
         if self.schedule_interval < 60:
@@ -59,6 +71,9 @@ class Config:
     @property
     def mirrors_path(self) -> Path:
         return Path(self.settings.mirrors_dir)
+
+    def find_repo(self, name: str) -> Optional[Repository]:
+        return next((r for r in self.repositories if r.name == name), None)
 
 
 def _parse_remote(data: dict, context: str) -> Remote:
@@ -81,8 +96,18 @@ def load_config(path: Path) -> Config:
         data = yaml.safe_load(f) or {}
 
     settings_data = data.get("settings", {})
-    known = Settings.__dataclass_fields__.keys()
-    settings = Settings(**{k: v for k, v in settings_data.items() if k in known})
+
+    webhook_data = settings_data.pop("webhook", {})
+    webhook = WebhookConfig(**{
+        k: v for k, v in webhook_data.items()
+        if k in WebhookConfig.__dataclass_fields__
+    })
+
+    known_settings = Settings.__dataclass_fields__.keys() - {"webhook"}
+    settings = Settings(
+        **{k: v for k, v in settings_data.items() if k in known_settings},
+        webhook=webhook,
+    )
 
     repositories: list[Repository] = []
     for i, repo_data in enumerate(data.get("repositories", [])):
@@ -91,14 +116,19 @@ def load_config(path: Path) -> Config:
 
         source_data = repo_data.get("source")
         if not source_data:
-            raise ValueError(f"{ctx} '{name}': 'source' table is required")
+            raise ValueError(f"{ctx} '{name}': 'source' is required")
         source = _parse_remote(source_data, f"{ctx}.source")
 
         destinations: list[Remote] = []
         for j, dest_data in enumerate(repo_data.get("destinations", [])):
             destinations.append(_parse_remote(dest_data, f"{ctx}.destinations[{j}]"))
 
-        repositories.append(Repository(name=name, source=source, destinations=destinations))
+        repositories.append(Repository(
+            name=name,
+            source=source,
+            destinations=destinations,
+            schedule_interval=repo_data.get("schedule_interval"),
+        ))
 
     if not repositories:
         raise ValueError("No repositories defined in config")
