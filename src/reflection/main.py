@@ -3,14 +3,17 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 
 import coloredlogs
 import schedule
 
-from .config import load_config
-from .mirror import mirror_all
+from .config import Config, load_config
+from .mirror import mirror_all, mirror_one
+from .server import init as server_init
+from .server import run_server
 
 
 def setup_logging(level: str) -> None:
@@ -18,7 +21,6 @@ def setup_logging(level: str) -> None:
         level=level.upper(),
         fmt="%(asctime)s  %(levelname)-8s  %(message)s",
         datefmt="%H:%M:%S",
-        # Убираем цвет для WARNING/ERROR чтобы они читались на светлом фоне тоже
         level_styles={
             "debug":    {"color": "white", "faint": True},
             "info":     {"color": "cyan"},
@@ -44,66 +46,88 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path("config.yaml"),
         metavar="FILE",
-        help="Path to config file (default: config.toml)",
-    )
-    parser.add_argument(
-        "--daemon",
-        action="store_true",
-        help="Run continuously on schedule_interval from config",
+        help="Path to config file (default: config.yaml)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print what would be done without running git",
     )
-    parser.add_argument(
-        "--interval",
-        type=int,
-        default=None,
-        metavar="SECONDS",
-        help="Override schedule_interval from config (daemon mode only)",
-    )
     return parser.parse_args(argv)
 
 
-def run_sync(config_path: Path, dry_run: bool) -> bool:
-    try:
-        config = load_config(config_path)
-    except (FileNotFoundError, ValueError) as exc:
-        logging.getLogger(__name__).error("Config error: %s", exc)
-        return False
+def _make_trigger(config: Config):
+    """Возвращает trigger_one и trigger_all замыкания для webhook-сервера."""
+    mirrors_dir = config.mirrors_path
+    timeout = config.settings.timeout
 
-    results = mirror_all(config, dry_run=dry_run)
-    return all(r.success for r in results)
+    def trigger_one(repo_name: str) -> bool | None:
+        repo = config.find_repo(repo_name)
+        if repo is None:
+            return None
+        result = mirror_one(repo, mirrors_dir, timeout)
+        return result.success
+
+    def trigger_all() -> None:
+        mirror_all(config)
+
+    return trigger_one, trigger_all
+
+
+def _setup_schedule(config: Config) -> None:
+    mirrors_dir = config.mirrors_path
+    timeout = config.settings.timeout
+    global_interval = config.settings.schedule_interval
+
+    for repo in config.repositories:
+        interval = repo.schedule_interval or global_interval
+        schedule.every(interval).seconds.do(mirror_one, repo, mirrors_dir, timeout)
+        logging.getLogger(__name__).debug(
+            "Scheduled [%s] every %ds", repo.name, interval
+        )
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
-    # Ранняя инициализация логов с уровнем из конфига (если файл доступен)
     try:
-        cfg = load_config(args.config)
-        setup_logging(cfg.settings.log_level)
-    except Exception:
-        setup_logging("INFO")
+        config = load_config(args.config)
+    except (FileNotFoundError, ValueError) as exc:
+        # Логгер ещё не настроен — используем stderr
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
+    setup_logging(config.settings.log_level)
     log = logging.getLogger(__name__)
 
-    if args.daemon:
-        interval = args.interval or cfg.settings.schedule_interval
-        log.info("Daemon mode: syncing every %d seconds", interval)
+    if args.dry_run:
+        mirror_all(config, dry_run=True)
+        return
 
-        # Первый запуск сразу
-        run_sync(args.config, args.dry_run)
+    # Первый прогон сразу при старте
+    mirror_all(config)
 
-        schedule.every(interval).seconds.do(run_sync, args.config, args.dry_run)
+    # Webhook-сервер в отдельном потоке (если включён)
+    wh = config.settings.webhook
+    if wh.enabled:
+        trigger_one, trigger_all = _make_trigger(config)
+        server_init(secret=wh.secret, trigger_one=trigger_one, trigger_all=trigger_all)
+        t = threading.Thread(
+            target=run_server, args=(wh.host, wh.port), daemon=True, name="webhook"
+        )
+        t.start()
+        log.info("Webhook server listening on %s:%d", wh.host, wh.port)
 
+    # Настраиваем расписание
+    _setup_schedule(config)
+    log.info("Scheduler ready. Press Ctrl+C to stop.")
+
+    try:
         while True:
             schedule.run_pending()
-            time.sleep(10)
-    else:
-        success = run_sync(args.config, args.dry_run)
-        sys.exit(0 if success else 1)
+            time.sleep(5)
+    except KeyboardInterrupt:
+        log.info("Stopped.")
 
 
 if __name__ == "__main__":
