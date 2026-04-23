@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 
+import coloredlogs
 import schedule
 
 from .config import load_config
@@ -13,10 +14,22 @@ from .mirror import mirror_all
 
 
 def setup_logging(level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
+    coloredlogs.install(
+        level=level.upper(),
+        fmt="%(asctime)s  %(levelname)-8s  %(message)s",
+        datefmt="%H:%M:%S",
+        # Убираем цвет для WARNING/ERROR чтобы они читались на светлом фоне тоже
+        level_styles={
+            "debug":    {"color": "white", "faint": True},
+            "info":     {"color": "cyan"},
+            "warning":  {"color": "yellow", "bold": True},
+            "error":    {"color": "red", "bold": True},
+            "critical": {"color": "red", "bold": True, "background": "white"},
+        },
+        field_styles={
+            "asctime":  {"color": "green"},
+            "levelname": {"bold": True},
+        },
         stream=sys.stdout,
     )
 
