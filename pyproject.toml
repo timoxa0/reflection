@@ -1,5 +1,5 @@
 [project]
-name = "gitverse-mirror"
+name = "reflection"
 version = "0.1.0"
 description = "Git repository mirroring tool"
 requires-python = ">=3.11"
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-gitverse-mirror = "reflection.main:main"
+reflection = "reflection.main:main"
 
 [build-system]
 requires = ["hatchling"]
