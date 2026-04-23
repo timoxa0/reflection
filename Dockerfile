@@ -39,6 +39,7 @@ USER mirror
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
+EXPOSE 8080
+
 ENTRYPOINT ["reflection"]
-# По умолчанию — однократный запуск; для демона передайте --daemon
 CMD ["--config", "/app/config.yaml"]
