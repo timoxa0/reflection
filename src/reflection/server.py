@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
+from contextlib import asynccontextmanager
 from typing import Callable
 
 import uvicorn
@@ -10,7 +12,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="reflection", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    threading.Thread(target=_trigger_all, daemon=True, name="initial-sync").start()
+    yield
+
+
+app = FastAPI(title="reflection", docs_url=None, redoc_url=None, lifespan=_lifespan)
 _security = HTTPBearer()
 
 # Инициализируются при старте через init()

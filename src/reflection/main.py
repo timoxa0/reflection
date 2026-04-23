@@ -104,11 +104,9 @@ def main(argv: list[str] | None = None) -> None:
         mirror_all(config, dry_run=True)
         return
 
-    # Первый прогон сразу при старте
-    mirror_all(config)
+    wh = config.settings.webhook
 
     # Webhook-сервер в отдельном потоке (если включён)
-    wh = config.settings.webhook
     if wh.enabled:
         trigger_one, trigger_all = _make_trigger(config)
         server_init(secret=wh.secret, trigger_one=trigger_one, trigger_all=trigger_all)
@@ -117,6 +115,8 @@ def main(argv: list[str] | None = None) -> None:
         )
         t.start()
         log.info("Webhook server listening on %s:%d", wh.host, wh.port)
+    else:
+        mirror_all(config)
 
     # Настраиваем расписание
     _setup_schedule(config)
