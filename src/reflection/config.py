@@ -1,10 +1,27 @@
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
+
+
+def _interpolate(value: Any) -> Any:
+    """Подставляет ${VAR} → os.environ['VAR'] рекурсивно по всему дереву конфига."""
+    if isinstance(value, str):
+        return re.sub(
+            r"\$\{([^}]+)\}",
+            lambda m: os.environ.get(m.group(1), m.group(0)),
+            value,
+        )
+    if isinstance(value, dict):
+        return {k: _interpolate(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_interpolate(v) for v in value]
+    return value
 
 
 DEFAULT_PUSH_REFS = (
@@ -93,7 +110,7 @@ def load_config(path: Path) -> Config:
         raise FileNotFoundError(f"Config file not found: {path}")
 
     with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+        data = _interpolate(yaml.safe_load(f) or {})
 
     settings_data = data.get("settings", {})
 
