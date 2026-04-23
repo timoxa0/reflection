@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,17 @@ from typing import Optional
 from .config import DEFAULT_PUSH_REFS, Config, Remote, Repository
 
 logger = logging.getLogger(__name__)
+
+# Per-repo locks: предотвращают одновременный запуск зеркалирования одного репо
+_repo_locks: dict[str, threading.Lock] = {}
+_locks_mu = threading.Lock()
+
+
+def _repo_lock(name: str) -> threading.Lock:
+    with _locks_mu:
+        if name not in _repo_locks:
+            _repo_locks[name] = threading.Lock()
+        return _repo_locks[name]
 
 
 # ── Результаты ───────────────────────────────────────────────────────────────
@@ -26,6 +38,7 @@ class PushResult:
 class RepoResult:
     name: str
     fetch_ok: bool
+    skipped: bool = False
     pushes: list[PushResult] = field(default_factory=list)
 
     @property
@@ -75,7 +88,6 @@ def _git(
 # ── Основная логика ───────────────────────────────────────────────────────────
 
 def _fetch(repo: Repository, local: Path, timeout: int) -> tuple[bool, Optional[str]]:
-    """Обновляет локальный bare-клон из source. Клонирует при первом запуске."""
     env = _build_env(repo.source)
 
     try:
@@ -101,7 +113,6 @@ def _fetch(repo: Repository, local: Path, timeout: int) -> tuple[bool, Optional[
 
 
 def _push(local: Path, dest: Remote, dest_name: str, timeout: int) -> PushResult:
-    """Зеркально пушит локальный bare-клон в destination."""
     env = _build_env(dest)
 
     try:
@@ -126,34 +137,39 @@ def _push(local: Path, dest: Remote, dest_name: str, timeout: int) -> PushResult
 
 
 def mirror_one(repo: Repository, mirrors_dir: Path, timeout: int) -> RepoResult:
-    local = mirrors_dir / repo.name
+    lock = _repo_lock(repo.name)
+    if not lock.acquire(blocking=False):
+        logger.warning("[%s] already running, skipping", repo.name)
+        return RepoResult(name=repo.name, fetch_ok=False, skipped=True)
 
-    # 1. Синхронизируем из источника
-    fetch_ok, fetch_err = _fetch(repo, local, timeout)
+    try:
+        local = mirrors_dir / repo.name
 
-    if not fetch_ok:
-        logger.error("[%s] fetch failed: %s", repo.name, fetch_err)
-        return RepoResult(name=repo.name, fetch_ok=False)
+        fetch_ok, fetch_err = _fetch(repo, local, timeout)
+        if not fetch_ok:
+            logger.error("[%s] fetch failed: %s", repo.name, fetch_err)
+            return RepoResult(name=repo.name, fetch_ok=False)
 
-    logger.info("[%s] fetched from source", repo.name)
+        logger.info("[%s] fetched from source", repo.name)
 
-    # 2. Пушим во все назначения параллельно (внутри одного репозитория)
-    pushes: list[PushResult] = []
-    with ThreadPoolExecutor(max_workers=len(repo.destinations)) as pool:
-        futures = {
-            pool.submit(_push, local, dest, dest.url, timeout): dest
-            for dest in repo.destinations
-        }
-        for future in as_completed(futures):
-            pushes.append(future.result())
+        pushes: list[PushResult] = []
+        with ThreadPoolExecutor(max_workers=len(repo.destinations)) as pool:
+            futures = {
+                pool.submit(_push, local, dest, dest.url, timeout): dest
+                for dest in repo.destinations
+            }
+            for future in as_completed(futures):
+                pushes.append(future.result())
 
-    for p in pushes:
-        if p.success:
-            logger.info("[%s] pushed -> %s", repo.name, p.destination)
-        else:
-            logger.error("[%s] push failed -> %s: %s", repo.name, p.destination, p.error)
+        for p in pushes:
+            if p.success:
+                logger.info("[%s] pushed -> %s", repo.name, p.destination)
+            else:
+                logger.error("[%s] push failed -> %s: %s", repo.name, p.destination, p.error)
 
-    return RepoResult(name=repo.name, fetch_ok=True, pushes=pushes)
+        return RepoResult(name=repo.name, fetch_ok=True, pushes=pushes)
+    finally:
+        lock.release()
 
 
 def mirror_all(config: Config, dry_run: bool = False) -> list[RepoResult]:
@@ -190,12 +206,12 @@ def mirror_all(config: Config, dry_run: bool = False) -> list[RepoResult]:
             results.append(future.result())
 
     ok = sum(1 for r in results if r.success)
-    fail = len(results) - ok
-    logger.info("Sync complete: %d/%d repos fully synced", ok, len(results))
-    if fail:
-        for r in results:
-            if not r.success:
-                for p in r.failed_pushes:
-                    logger.warning("  failed push: %s -> %s", r.name, p.destination)
+    skipped = sum(1 for r in results if r.skipped)
+    fail = len(results) - ok - skipped
+    logger.info("Sync complete: %d ok, %d skipped, %d failed", ok, skipped, fail)
+    for r in results:
+        if not r.success and not r.skipped:
+            for p in r.failed_pushes:
+                logger.warning("  failed push: %s -> %s", r.name, p.destination)
 
     return results
