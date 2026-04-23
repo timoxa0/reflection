@@ -7,12 +7,20 @@ from typing import Optional
 import yaml
 
 
+DEFAULT_PUSH_REFS = (
+    "+refs/heads/*:refs/heads/*",
+    "+refs/tags/*:refs/tags/*",
+)
+
+
 @dataclass
 class Remote:
     """Общая модель для source и destination."""
     url: str
     ssh_key: Optional[str] = None
     ssl_verify: bool = True
+    # Дополнительные refspecs поверх дефолтных (heads + tags)
+    push_refs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -61,6 +69,7 @@ def _parse_remote(data: dict, context: str) -> Remote:
         url=url,
         ssh_key=data.get("ssh_key"),
         ssl_verify=data.get("ssl_verify", True),
+        push_refs=data.get("push_refs", []),
     )
 
 

@@ -17,6 +17,14 @@ settings:
 # ────────────────────────────────────────────────────────────────────────────
 # Репозитории
 # Схема: source → (local bare clone) → destination_1, destination_2 ...
+#
+# По умолчанию пушатся только ветки и теги:
+#   +refs/heads/*:refs/heads/*
+#   +refs/tags/*:refs/tags/*
+#
+# refs/pull/* (GitHub PR-рефы) не пушатся намеренно — большинство git-хостингов
+# (Gitverse, Gitea, GitLab) отклоняют их хуком.
+# Чтобы добавить свои refspecs — используйте push_refs в нужном destination.
 # ────────────────────────────────────────────────────────────────────────────
 repositories:
 
@@ -31,6 +39,9 @@ repositories:
       - name: bitbucket
         url: git@bitbucket.org:org/my-project.git
         ssh_key: /keys/bitbucket_ed25519
+        # Необязательно: дополнительные refspecs поверх heads + tags
+        # push_refs:
+        #   - "+refs/notes/*:refs/notes/*"
 
   - name: private-service
     source:

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .config import Config, Remote, Repository
+from .config import DEFAULT_PUSH_REFS, Config, Remote, Repository
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +105,10 @@ def _push(local: Path, dest: Remote, dest_name: str, timeout: int) -> PushResult
     env = _build_env(dest)
 
     try:
-        logger.debug("  -> push to '%s' (%s)", dest_name, dest.url)
+        refspecs = [*DEFAULT_PUSH_REFS, *dest.push_refs]
+        logger.debug("  -> push to '%s' (%s) refs: %s", dest_name, dest.url, refspecs)
         r = _git(
-            ["push", "--mirror", dest.url],
+            ["push", "--prune", dest.url, *refspecs],
             cwd=local, env=env, timeout=timeout,
         )
 
