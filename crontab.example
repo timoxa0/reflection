@@ -1,4 +1,4 @@
-# Примеры cron-расписания для gitverse-mirror
+# Примеры cron-расписания для reflection
 # Установка: crontab -e  (добавьте нужную строку)
 #
 # Формат: минута  час  день  месяц  день_недели  команда
@@ -7,23 +7,23 @@
 # ── Локальный запуск (uv) ────────────────────────────────────────────────
 
 # Каждый час
-0 * * * * cd /opt/gitverse-mirror && uv run gitverse-mirror --config config.toml >> /var/log/gitverse-mirror.log 2>&1
+0 * * * * cd /opt/reflection && uv run reflection --config config.yaml >> /var/log/reflection.log 2>&1
 
 # Каждые 30 минут
-*/30 * * * * cd /opt/gitverse-mirror && uv run gitverse-mirror --config config.toml >> /var/log/gitverse-mirror.log 2>&1
+*/30 * * * * cd /opt/reflection && uv run reflection --config config.yaml >> /var/log/reflection.log 2>&1
 
 # Каждую ночь в 03:00
-0 3 * * * cd /opt/gitverse-mirror && uv run gitverse-mirror --config config.toml >> /var/log/gitverse-mirror.log 2>&1
+0 3 * * * cd /opt/reflection && uv run reflection --config config.yaml >> /var/log/reflection.log 2>&1
 
 
 # ── Docker (однократный профиль) ─────────────────────────────────────────
 
 # Каждый час через docker compose
-0 * * * * cd /opt/gitverse-mirror && docker compose run --rm mirror-once >> /var/log/gitverse-mirror.log 2>&1
+0 * * * * cd /opt/reflection && docker compose run --rm mirror-once >> /var/log/reflection.log 2>&1
 
 # Каждый час через docker run (образ уже собран)
 0 * * * * docker run --rm \
-  -v /opt/gitverse-mirror/config.toml:/app/config.toml:ro \
-  -v gitverse_mirrors:/mirrors \
-  -v /opt/gitverse-mirror/keys:/keys:ro \
-  gitverse-mirror:latest >> /var/log/gitverse-mirror.log 2>&1
+  -v /opt/reflection/config.yaml:/app/config.yaml:ro \
+  -v reflection_mirrors:/mirrors \
+  -v /opt/reflection/keys:/keys:ro \
+  reflection:latest >> /var/log/reflection.log 2>&1
