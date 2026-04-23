@@ -12,7 +12,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Копируем исходники и устанавливаем сам пакет
 COPY src/ src/
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-editable
 
 
 # ── Runtime image ───────────────────────────────────────────────────────────
