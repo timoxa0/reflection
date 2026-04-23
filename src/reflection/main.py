@@ -36,8 +36,8 @@ def setup_logging(level: str) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="gitverse-mirror",
-        description="Mirror git repositories defined in a TOML config",
+        prog="reflection",
+        description="Mirror git repositories defined in a YAML config",
     )
     parser.add_argument(
         "-c", "--config",
