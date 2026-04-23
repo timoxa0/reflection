@@ -39,6 +39,6 @@ USER mirror
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
-ENTRYPOINT ["gitverse-mirror"]
+ENTRYPOINT ["reflection"]
 # По умолчанию — однократный запуск; для демона передайте --daemon
 CMD ["--config", "/app/config.yaml"]
