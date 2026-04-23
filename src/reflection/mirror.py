@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from .config import DEFAULT_PUSH_REFS, Config, Remote, Repository
 
@@ -62,6 +63,16 @@ def _build_env(remote: Remote) -> dict[str, str]:
             " -o StrictHostKeyChecking=no"
             " -o BatchMode=yes"
         )
+
+    if remote.pat:
+        p = urlparse(remote.url)
+        port_str = f":{p.port}" if p.port else ""
+        plain = f"{p.scheme}://{p.hostname}{port_str}/"
+        authed = f"{p.scheme}://oauth2:{remote.pat}@{p.hostname}{port_str}/"
+        idx = int(env.get("GIT_CONFIG_COUNT", "0"))
+        env["GIT_CONFIG_COUNT"] = str(idx + 1)
+        env[f"GIT_CONFIG_KEY_{idx}"] = f"url.{authed}.insteadOf"
+        env[f"GIT_CONFIG_VALUE_{idx}"] = plain
 
     if not remote.ssl_verify:
         env["GIT_SSL_NO_VERIFY"] = "true"

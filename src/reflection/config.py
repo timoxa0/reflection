@@ -34,6 +34,7 @@ DEFAULT_PUSH_REFS = (
 class Remote:
     url: str
     ssh_key: Optional[str] = None
+    pat: Optional[str] = None
     ssl_verify: bool = True
     push_refs: list[str] = field(default_factory=list)
 
@@ -100,6 +101,7 @@ def _parse_remote(data: dict, context: str) -> Remote:
     return Remote(
         url=url,
         ssh_key=data.get("ssh_key"),
+        pat=data.get("pat"),
         ssl_verify=data.get("ssl_verify", True),
         push_refs=data.get("push_refs", []),
     )
