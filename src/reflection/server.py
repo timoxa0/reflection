@@ -42,7 +42,7 @@ def _auth(token: str = Query(...)) -> None:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-@app.get("/mirror/{repo_name}", status_code=202)
+@app.post("/mirror/{repo_name}", status_code=202)
 async def trigger_one(
     repo_name: str,
     background_tasks: BackgroundTasks,
@@ -55,7 +55,7 @@ async def trigger_one(
     return {"status": "accepted", "repo": repo_name}
 
 
-@app.get("/mirror", status_code=202)
+@app.post("/mirror", status_code=202)
 async def trigger_all(
     background_tasks: BackgroundTasks,
     _: None = Depends(_auth),
